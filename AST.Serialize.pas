@@ -39,7 +39,7 @@ implementation
 
 const
   CSignature: AnsiString = 'DAST_MCP_V01'#26;
-  CVersion: Cardinal = $02000000;
+  CVersion: Cardinal = $03000000;
 
 { TFullASTSerializer }
 
@@ -143,12 +143,9 @@ begin
     // Line
     if (not ReadNumber(Num)) or (Num > Cardinal(High(Integer))) then Exit;
     Node.Line := Num;
-    // ECol
+    // LineSeq
     if (not ReadNumber(Num)) or (Num > Cardinal(High(Integer))) then Exit;
-    Node.ECol := Num;
-    // ELine
-    if (not ReadNumber(Num)) or (Num > Cardinal(High(Integer))) then Exit;
-    Node.ELine := Num;
+    Node.LineSeq := Num;
     // FileName
     if not ReadString(Str) then Exit;
     Node.FileName := Str;
@@ -267,8 +264,7 @@ begin
   if not WriteNumber(Ord(Node.Typ)) then Exit;
   if not WriteNumber(Node.Col) then Exit;
   if not WriteNumber(Node.Line) then Exit;
-  if not WriteNumber(Node.ECol) then Exit;
-  if not WriteNumber(Node.ELine) then Exit;
+  if not WriteNumber(Node.LineSeq) then Exit;
   if not WriteString(Node.FileName) then Exit;
 
   case NC of

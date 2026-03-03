@@ -1439,9 +1439,7 @@ begin
     if Result > 0 then
       Exit;
   end;
-  Result := Node.ELine;
-  if Result <= 0 then
-    Result := Node.Line;
+  Result := Node.Line;
 end;
 
 function LocateSymbol(Tree: TSyntaxNode; const SymbolName: string): TSymbolLocation;
@@ -1541,8 +1539,8 @@ var
     end;
     if EndL <= 0 then
     begin
-      EndL := Node.ELine;
-      EndC := Node.ECol;
+      EndL := 0;
+      EndC := 0;
     end;
 
     // If we have a valid end line, check against it
