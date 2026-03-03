@@ -53,6 +53,9 @@ type
     procedure InvalidateFile(const AFullPath: string);
     function ResolveFilePath(const AFileName: string): string;
 
+    procedure Reconfigure(const ARoots: TArray<string>);
+    function IsConfigured: Boolean;
+
     property ProjectRoot: string read GetProjectRoot;
   end;
 
@@ -126,32 +129,36 @@ var
   I: Integer;
 begin
   inherited Create;
-  SetLength(FRoots, Length(ARoots));
-  for I := 0 to High(ARoots) do
-    FRoots[I] := IncludeTrailingPathDelimiter(ARoots[I]);
   FCache := TDictionary<string, TCachedTree>.Create;
-  FIncludeHandler := TSimpleIncludeHandler.Create(FRoots);
-  InitCacheDir;
 
-  // Start file watcher
-  FWatcher := TDirectoryWatcher.Create(FRoots,
-    procedure(APath: string)
-    begin
-      HandleFileChanged(APath);
-    end);
-  TDirectoryWatcher(FWatcher).Start;
+  if Length(ARoots) > 0 then
+  begin
+    SetLength(FRoots, Length(ARoots));
+    for I := 0 to High(ARoots) do
+      FRoots[I] := IncludeTrailingPathDelimiter(ARoots[I]);
+    FIncludeHandler := TSimpleIncludeHandler.Create(FRoots);
+    InitCacheDir;
 
-  // Eager-parse all files in background
-  TThread.CreateAnonymousThread(
-    procedure
-    begin
-      try
-        ParseAllFiles;
-      except
-        on E: Exception do
-          WriteLn(ErrOutput, '[delphi-ast] Background parse failed: ' + E.Message);
-      end;
-    end).Start;
+    // Start file watcher
+    FWatcher := TDirectoryWatcher.Create(FRoots,
+      procedure(APath: string)
+      begin
+        HandleFileChanged(APath);
+      end);
+    TDirectoryWatcher(FWatcher).Start;
+
+    // Eager-parse all files in background
+    TThread.CreateAnonymousThread(
+      procedure
+      begin
+        try
+          ParseAllFiles;
+        except
+          on E: Exception do
+            WriteLn(ErrOutput, '[delphi-ast] Background parse failed: ' + E.Message);
+        end;
+      end).Start;
+  end;
 end;
 
 destructor TASTParser.Destroy;
@@ -327,6 +334,63 @@ begin
     on E: Exception do
       WriteLn(ErrOutput, '[delphi-ast] Failed to re-parse ' + AFullPath + ': ' + E.Message);
   end;
+end;
+
+procedure TASTParser.Reconfigure(const ARoots: TArray<string>);
+var
+  Entry: TCachedTree;
+  I: Integer;
+begin
+  // 1. Stop existing watcher
+  if FWatcher <> nil then
+  begin
+    TDirectoryWatcher(FWatcher).Stop;
+    FreeAndNil(FWatcher);
+  end;
+
+  // 2. Clear all cached trees
+  FLock.BeginWrite;
+  try
+    for Entry in FCache.Values do
+      Entry.Node.Free;
+    FCache.Clear;
+  finally
+    FLock.EndWrite;
+  end;
+
+  // 3. Set new roots
+  SetLength(FRoots, Length(ARoots));
+  for I := 0 to High(ARoots) do
+    FRoots[I] := IncludeTrailingPathDelimiter(ARoots[I]);
+
+  // 4. Reinitialize
+  FIncludeHandler := TSimpleIncludeHandler.Create(FRoots);
+  InitCacheDir;
+
+  // 5. Start new watcher
+  FWatcher := TDirectoryWatcher.Create(FRoots,
+    procedure(APath: string)
+    begin
+      HandleFileChanged(APath);
+    end);
+  TDirectoryWatcher(FWatcher).Start;
+
+  // 6. Background parse
+  TThread.CreateAnonymousThread(
+    procedure
+    begin
+      try
+        ParseAllFiles;
+      except
+        on E: Exception do
+          WriteLn(ErrOutput, '[delphi-ast] Background parse failed: ' + E.Message);
+      end;
+    end).Start;
+end;
+
+function TASTParser.IsConfigured: Boolean;
+begin
+  Result := Length(FRoots) > 0;
 end;
 
 function TASTParser.ListFiles(const NameFilter: string): TArray<string>;

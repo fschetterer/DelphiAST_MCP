@@ -54,10 +54,7 @@ begin
       end;
     end;
 
-    if ProjectRoot = '' then
-      ProjectRoot := GetCurrentDir;
-
-    if not DirectoryExists(ProjectRoot) then
+    if (ProjectRoot <> '') and not DirectoryExists(ProjectRoot) then
     begin
       WriteLn('Error: Directory not found: ' + ProjectRoot);
       ExitCode := 1;
@@ -65,14 +62,24 @@ begin
     end;
 
     // Build roots array: project root first, then extra paths
-    SetLength(Roots, 1 + PathCount);
-    Roots[0] := ProjectRoot;
-    for I := 0 to PathCount - 1 do
-      Roots[I + 1] := ExtraPaths[I];
+    if ProjectRoot <> '' then
+    begin
+      SetLength(Roots, 1 + PathCount);
+      Roots[0] := ProjectRoot;
+      for I := 0 to PathCount - 1 do
+        Roots[I + 1] := ExtraPaths[I];
+    end
+    else
+      SetLength(Roots, 0);
 
-    WriteLn('Project root: ' + ProjectRoot);
-    for I := 0 to PathCount - 1 do
-      WriteLn('Extra path: ' + ExtraPaths[I]);
+    if ProjectRoot <> '' then
+    begin
+      WriteLn('Project root: ' + ProjectRoot);
+      for I := 0 to PathCount - 1 do
+        WriteLn('Extra path: ' + ExtraPaths[I]);
+    end
+    else
+      WriteLn('No project root specified. Use set_project tool to configure.');
 
     Parser := TASTParser.Create(Roots);
     try

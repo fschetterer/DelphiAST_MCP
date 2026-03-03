@@ -60,7 +60,6 @@ begin
   FOnFileChanged := AOnFileChanged;
   FStopEvent := CreateEvent(nil, True, False, nil);
   FDebounce := TDictionary<string, TDateTime>.Create;
-  Start;
 end;
 
 destructor TDirectoryWatcher.Destroy;

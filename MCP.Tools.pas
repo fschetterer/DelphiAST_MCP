@@ -27,6 +27,7 @@ type
     function DoSymbolAtPosition(Params: TJSONObject): TJSONValue;
     function DoResolveInheritance(Params: TJSONObject): TJSONValue;
     function DoGetCallGraph(Params: TJSONObject): TJSONValue;
+    function DoSetProject(Params: TJSONObject): TJSONValue;
 
     property Parser: TASTParser read FParser;
   end;
@@ -34,7 +35,7 @@ type
 implementation
 
 uses
-  SysUtils, Classes, Generics.Collections, DelphiAST.Classes, DelphiAST.Consts, AST.Query;
+  SysUtils, Classes, IOUtils, Generics.Collections, DelphiAST.Classes, DelphiAST.Consts, AST.Query;
 
 { TMCPTools }
 
@@ -197,6 +198,14 @@ begin
   Result.Add(MakeTool('get_call_graph',
     'Analyze method call relationships. "callees" mode extracts all calls from a method body. "callers" mode finds all methods that call the target. Supports multi-level recursion with cycle detection.',
     MakeInputSchema(Props, ['method_name'])));
+
+  // 13. set_project
+  Props := TJSONObject.Create;
+  Props.AddPair('path', MakeStringProp('Absolute path to the project root directory'));
+  Result.Add(MakeTool('set_project',
+    'Set the project root directory. Reads .delphi-ast.json for library paths. ' +
+    'Call this before using other tools to point the server at your project.',
+    MakeInputSchema(Props, ['path'])));
 end;
 
 function TMCPTools.CallTool(const ToolName: string; Params: TJSONObject): TJSONValue;
@@ -225,6 +234,8 @@ begin
     Result := DoResolveInheritance(Params)
   else if ToolName = 'get_call_graph' then
     Result := DoGetCallGraph(Params)
+  else if ToolName = 'set_project' then
+    Result := DoSetProject(Params)
   else
     raise Exception.CreateFmt('Unknown tool: %s', [ToolName]);
 end;
@@ -1059,6 +1070,63 @@ begin
   finally
     Visited.Free;
   end;
+end;
+
+function TMCPTools.DoSetProject(Params: TJSONObject): TJSONValue;
+var
+  ProjectPath, ConfigFile, ConfigText: string;
+  ConfigJSON, LibPathsObj: TJSONValue;
+  LibPathsArr: TJSONArray;
+  Roots: TArray<string>;
+  I: Integer;
+  ResultObj: TJSONObject;
+begin
+  ProjectPath := GetStr(Params, 'path');
+  if ProjectPath = '' then
+    raise Exception.Create('path is required');
+  if not DirectoryExists(ProjectPath) then
+    raise Exception.Create('Directory not found: ' + ProjectPath);
+
+  // Start with project root
+  SetLength(Roots, 1);
+  Roots[0] := ProjectPath;
+
+  // Read .delphi-ast.json if present
+  ConfigFile := TPath.Combine(ProjectPath, '.delphi-ast.json');
+  if FileExists(ConfigFile) then
+  begin
+    ConfigText := TFile.ReadAllText(ConfigFile);
+    ConfigJSON := TJSONObject.ParseJSONValue(ConfigText);
+    try
+      if (ConfigJSON is TJSONObject) and
+         TJSONObject(ConfigJSON).TryGetValue('libraryPaths', LibPathsObj) and
+         (LibPathsObj is TJSONArray) then
+      begin
+        LibPathsArr := TJSONArray(LibPathsObj);
+        for I := 0 to LibPathsArr.Count - 1 do
+        begin
+          SetLength(Roots, Length(Roots) + 1);
+          Roots[High(Roots)] := LibPathsArr.Items[I].Value;
+        end;
+      end;
+    finally
+      ConfigJSON.Free;
+    end;
+  end;
+
+  // Reconfigure parser with new roots
+  FParser.Reconfigure(Roots);
+
+  // Return result
+  ResultObj := TJSONObject.Create;
+  ResultObj.AddPair('project', ProjectPath);
+  ResultObj.AddPair('files', TJSONNumber.Create(Length(FParser.ListFiles(''))));
+  // Include library paths in response
+  LibPathsArr := TJSONArray.Create;
+  for I := 1 to High(Roots) do
+    LibPathsArr.Add(Roots[I]);
+  ResultObj.AddPair('libraryPaths', LibPathsArr);
+  Result := ResultObj;
 end;
 
 end.
