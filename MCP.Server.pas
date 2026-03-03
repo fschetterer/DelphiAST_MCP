@@ -246,8 +246,11 @@ begin
       Result := HandleInitialize(Id, Params)
     else if Method = 'initialized' then
     begin
-      Log('Starting eager parse of all project files...');
-      FTools.Parser.ParseAllFiles;
+      Log('Starting eager parse of all project files in background...');
+      TThread.CreateAnonymousThread(procedure
+      begin
+        FTools.Parser.ParseAllFiles;
+      end).Start;
       Result := '';
     end
     else if Method = 'tools/list' then

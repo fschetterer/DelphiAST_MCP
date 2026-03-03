@@ -7,6 +7,8 @@ uses
   SysUtils,
   Classes,
   AST.Parser in 'AST.Parser.pas',
+  AST.Serialize in 'AST.Serialize.pas',
+  AST.Watcher in 'AST.Watcher.pas',
   AST.Query in 'AST.Query.pas',
   MCP.Tools in 'MCP.Tools.pas',
   MCP.Server in 'MCP.Server.pas';
