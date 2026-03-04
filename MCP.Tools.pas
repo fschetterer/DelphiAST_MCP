@@ -1072,6 +1072,48 @@ begin
   end;
 end;
 
+function IsSkippableDir(const DirName: string): Boolean;
+begin
+  Result := DirName.StartsWith('.') or
+            DirName.StartsWith('__') or
+            SameText(DirName, 'dcu64') or
+            SameText(DirName, 'dcu32') or
+            SameText(DirName, 'bin64') or
+            SameText(DirName, 'bin32');
+end;
+
+function ExpandWithSubdirs(const Paths: TArray<string>): TArray<string>;
+var
+  Path, Sub: string;
+  Subs: TArray<string>;
+  Skip: Boolean;
+  Parts: TArray<string>;
+  Part: string;
+begin
+  Result := nil;
+  for Path in Paths do
+  begin
+    if not DirectoryExists(Path) then
+      Continue;
+    Result := Result + [Path];
+    Subs := TDirectory.GetDirectories(Path, '*', TSearchOption.soAllDirectories);
+    for Sub in Subs do
+    begin
+      // Check if any path component should be skipped
+      Skip := False;
+      Parts := Sub.Substring(Path.Length + 1).Split(['\', '/']);
+      for Part in Parts do
+        if IsSkippableDir(Part) then
+        begin
+          Skip := True;
+          Break;
+        end;
+      if not Skip then
+        Result := Result + [Sub];
+    end;
+  end;
+end;
+
 function TMCPTools.DoSetProject(Params: TJSONObject): TJSONValue;
 var
   ProjectPath, ConfigFile, ConfigText: string;
@@ -1113,6 +1155,9 @@ begin
       ConfigJSON.Free;
     end;
   end;
+
+  // Expand each root to include all subdirectories recursively
+  Roots := ExpandWithSubdirs(Roots);
 
   // Reconfigure parser with new roots
   FParser.Reconfigure(Roots);
