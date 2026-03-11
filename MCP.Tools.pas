@@ -28,6 +28,7 @@ type
     function DoResolveInheritance(Params: TJSONObject): TJSONValue;
     function DoGetCallGraph(Params: TJSONObject): TJSONValue;
     function DoSetProject(Params: TJSONObject): TJSONValue;
+    function DoGetStatus(Params: TJSONObject): TJSONValue;
 
     property Parser: TASTParser read FParser;
   end;
@@ -206,11 +207,32 @@ begin
     'Set the project root directory. Reads .delphi-ast.json for library paths. ' +
     'Call this before using other tools to point the server at your project.',
     MakeInputSchema(Props, ['path'])));
+
+  // 14. get_status
+  Props := TJSONObject.Create;
+  Result.Add(MakeTool('get_status',
+    'Returns the current parse state of the server. ' +
+    'State is "idle" when ready, "parsing" while background parse is running. ' +
+    'Includes total_files, cached_files, parsed_files, and failed_files counts.',
+    MakeInputSchema(Props, [])));
 end;
 
 function TMCPTools.CallTool(const ToolName: string; Params: TJSONObject): TJSONValue;
 begin
-  if ToolName = 'list_files' then
+  // Allow status/project tools through even while parsing
+  if FParser.IsParsing and
+     (ToolName <> 'get_status') and
+     (ToolName <> 'set_project') then
+  begin
+    Result := TJSONObject.Create;
+    TJSONObject(Result).AddPair('error',
+      'Server is currently parsing files. Use get_status to check progress.');
+    Exit;
+  end;
+
+  if ToolName = 'get_status' then
+    Result := DoGetStatus(Params)
+  else if ToolName = 'list_files' then
     Result := DoListFiles(Params)
   else if ToolName = 'parse_unit' then
     Result := DoParseUnit(Params)
@@ -1187,6 +1209,24 @@ begin
     LibPathsArr.Add(Roots[I]);
   ResultObj.AddPair('libraryPaths', LibPathsArr);
   Result := ResultObj;
+end;
+
+function TMCPTools.DoGetStatus(Params: TJSONObject): TJSONValue;
+var
+  Status: TParseStatus;
+  Obj: TJSONObject;
+begin
+  Status := FParser.GetParseStatus;
+  Obj := TJSONObject.Create;
+  if Status.State = psIdle then
+    Obj.AddPair('state', 'idle')
+  else
+    Obj.AddPair('state', 'parsing');
+  Obj.AddPair('total_files', TJSONNumber.Create(Status.TotalFiles));
+  Obj.AddPair('cached_files', TJSONNumber.Create(Status.CachedFiles));
+  Obj.AddPair('parsed_files', TJSONNumber.Create(Status.ParsedFiles));
+  Obj.AddPair('failed_files', TJSONNumber.Create(Status.FailedFiles));
+  Result := Obj;
 end;
 
 end.

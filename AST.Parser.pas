@@ -23,6 +23,16 @@ type
       out Content: string; out FileName: string): Boolean;
   end;
 
+  TParseState = (psIdle, psParsing);
+
+  TParseStatus = record
+    State: TParseState;
+    TotalFiles: Integer;
+    ParsedFiles: Integer;
+    CachedFiles: Integer;
+    FailedFiles: Integer;
+  end;
+
   TASTParser = class
   private
     FRoots: TArray<string>;
@@ -31,6 +41,11 @@ type
     FLock: TLightweightMREW;
     FCacheDir: string;
     FWatcher: TObject;
+    FParseState: Integer;
+    FTotalFiles: Integer;
+    FParsedFiles: Integer;
+    FCachedFiles: Integer;
+    FFailedFiles: Integer;
 
     function GetProjectRoot: string;
     procedure InitCacheDir;
@@ -55,6 +70,8 @@ type
 
     procedure Reconfigure(const ARoots: TArray<string>);
     function IsConfigured: Boolean;
+    function IsParsing: Boolean;
+    function GetParseStatus: TParseStatus;
 
     property ProjectRoot: string read GetProjectRoot;
   end;
@@ -396,6 +413,20 @@ begin
   Result := Length(FRoots) > 0;
 end;
 
+function TASTParser.IsParsing: Boolean;
+begin
+  Result := FParseState = Integer(psParsing);
+end;
+
+function TASTParser.GetParseStatus: TParseStatus;
+begin
+  Result.State       := TParseState(FParseState);
+  Result.TotalFiles  := FTotalFiles;
+  Result.ParsedFiles := FParsedFiles;
+  Result.CachedFiles := FCachedFiles;
+  Result.FailedFiles := FFailedFiles;
+end;
+
 function TASTParser.ListFiles(const NameFilter: string): TArray<string>;
 var
   Files: TStringList;
@@ -520,55 +551,70 @@ var
   Entry: TCachedTree;
   AlreadyCached: Boolean;
 begin
-  // First load persisted cache from disk
-  LoadPersistedCache;
+  // Set parsing state and reset counters
+  TInterlocked.Exchange(FParseState, Integer(psParsing));
+  TInterlocked.Exchange(FParsedFiles, 0);
+  TInterlocked.Exchange(FCachedFiles, 0);
+  TInterlocked.Exchange(FFailedFiles, 0);
+  TInterlocked.Exchange(FTotalFiles, 0);
 
-  Files := ListFiles('');
   Parsed := 0;
   Failed := 0;
   Cached := 0;
+  try
+    // First load persisted cache from disk
+    LoadPersistedCache;
 
-  for F in Files do
-  begin
-    try
-      FullPath := ResolveFilePath(F);
-      Key := LowerCase(FullPath);
+    Files := ListFiles('');
+    TInterlocked.Exchange(FTotalFiles, Length(Files));
 
-      // Check if already in cache with fresh timestamp
-      AlreadyCached := False;
-      FLock.BeginRead;
+    for F in Files do
+    begin
       try
-        if FCache.TryGetValue(Key, Entry) then
-        begin
-          if FileExists(FullPath) and
-             (TFile.GetLastWriteTime(FullPath) <= Entry.ModifiedAt) then
-          begin
-            AlreadyCached := True;
-            Inc(Cached);
-          end;
-        end;
-      finally
-        FLock.EndRead;
-      end;
+        FullPath := ResolveFilePath(F);
+        Key := LowerCase(FullPath);
 
-      if not AlreadyCached then
-      begin
-        ParseFile(F);
-        Inc(Parsed);
-      end;
-    except
-      on E: Exception do
-      begin
-        Inc(Failed);
-        WriteLn(ErrOutput, '[delphi-ast] Failed to parse ' + F + ': ' + E.Message);
+        // Check if already in cache with fresh timestamp
+        AlreadyCached := False;
+        FLock.BeginRead;
+        try
+          if FCache.TryGetValue(Key, Entry) then
+          begin
+            if FileExists(FullPath) and
+               (TFile.GetLastWriteTime(FullPath) <= Entry.ModifiedAt) then
+            begin
+              AlreadyCached := True;
+              Inc(Cached);
+              TInterlocked.Increment(FCachedFiles);
+            end;
+          end;
+        finally
+          FLock.EndRead;
+        end;
+
+        if not AlreadyCached then
+        begin
+          ParseFile(F);
+          Inc(Parsed);
+          TInterlocked.Increment(FParsedFiles);
+        end;
+      except
+        on E: Exception do
+        begin
+          Inc(Failed);
+          TInterlocked.Increment(FFailedFiles);
+          WriteLn(ErrOutput, '[delphi-ast] Failed to parse ' + F + ': ' + E.Message);
+        end;
       end;
     end;
-  end;
 
-  WriteLn(ErrOutput, '[delphi-ast] Eager parse complete: ' +
-    IntToStr(Cached) + ' from cache, ' +
-    IntToStr(Parsed) + ' parsed, ' +
-    IntToStr(Failed) + ' failed');
+    WriteLn(ErrOutput, '[delphi-ast] Eager parse complete: ' +
+      IntToStr(Cached) + ' from cache, ' +
+      IntToStr(Parsed) + ' parsed, ' +
+      IntToStr(Failed) + ' failed');
+  finally
+    TInterlocked.Exchange(FParseState, Integer(psIdle));
+  end;
 end;
 
 function TASTParser.GetAllTrees: TArray<TPair<string, TSyntaxNode>>;

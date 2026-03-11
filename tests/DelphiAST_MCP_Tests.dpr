@@ -29,6 +29,7 @@ uses
   Tests.ParseUnit in 'Tests.ParseUnit.pas',
   Tests.ResolveInheritance in 'Tests.ResolveInheritance.pas',
   Tests.SetProject in 'Tests.SetProject.pas',
+  Tests.Status in 'Tests.Status.pas',
   Tests.SymbolAtPosition in 'Tests.SymbolAtPosition.pas',
   Tests.DelphiASTInvestigation in 'Tests.DelphiASTInvestigation.pas';
 
