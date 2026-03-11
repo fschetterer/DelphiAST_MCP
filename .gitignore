@@ -39,6 +39,9 @@ C#/
 #iOSDevice64/
 #Linux64/
 
+# claude
+.claude/settings.local.json
+
 # Delphi compiler-generated binaries (safe to delete)
 *.exe
 *.dll
