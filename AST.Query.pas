@@ -1674,7 +1674,7 @@ end;
 function ExtractCallsFromMethod(Tree: TSyntaxNode; const MethodName: string): TArray<TCallInfo>;
 var
   MethodNode, StmtsNode: TSyntaxNode;
-  CallNodes: TList<TSyntaxNode>;
+  CallNodes, DotNodes: TList<TSyntaxNode>;
   N: TSyntaxNode;
   Info: TCallInfo;
   Results: TList<TCallInfo>;
@@ -1689,9 +1689,11 @@ begin
   if StmtsNode = nil then
     Exit(nil);
 
+  DotNodes := TList<TSyntaxNode>.Create;
   CallNodes := TList<TSyntaxNode>.Create;
   Results := TList<TCallInfo>.Create;
   try
+    // First pass: explicit calls with parentheses (ntCall nodes)
     CollectNodes(StmtsNode, ntCall, CallNodes);
     for N in CallNodes do
     begin
@@ -1714,8 +1716,34 @@ begin
       Info.Line := N.Line;
       Results.Add(Info);
     end;
+
+    // Second pass: parameterless dot-notation calls (no parentheses)
+    // e.g. FAnimals[I].GetName appears as ntDot with right child ntIdentifier
+    // When a call HAS parentheses, its ntDot node's parent will be ntCall,
+    // which was already captured in the first pass.
+    CollectNodes(StmtsNode, ntDot, DotNodes);
+    for N in DotNodes do
+    begin
+      CalledExpr := ExprToSource(N);
+      if CalledExpr = '' then
+        Continue;
+
+      // Extract the simple name (last part after dot)
+      DotPos := LastDelimiter('.', CalledExpr);
+      if DotPos > 0 then
+        SimpleName := Copy(CalledExpr, DotPos + 1)
+      else
+        SimpleName := CalledExpr;
+
+      Info.CalledName := CalledExpr;
+      Info.SimpleName := SimpleName;
+      Info.Line := N.Line;
+      Results.Add(Info);
+    end;
+
     Result := Results.ToArray;
   finally
+    DotNodes.Free;
     CallNodes.Free;
     Results.Free;
   end;
