@@ -286,15 +286,21 @@ var
   JSON: TJSONObject;
   Body: TStringStream;
   RequestStr: string;
+  ArgsStr: string;
   ResultObj: TJSONObject;
   Content: TJSONArray;
 begin
   Result := nil;
   try
     // Build the request JSON manually to avoid ownership issues
+    // Note: cannot use IfThen here — it evaluates both branches, causing AV when Args is nil
+    if Assigned(Args) then
+      ArgsStr := Args.ToString
+    else
+      ArgsStr := '{}';
     RequestStr := Format(
       '{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"%s","arguments":%s}}',
-      [NextId, ToolName, IfThen(Assigned(Args), Args.ToString, '{}')]
+      [NextId, ToolName, ArgsStr]
     );
   except
     on E: Exception do

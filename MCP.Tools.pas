@@ -219,15 +219,24 @@ end;
 
 function TMCPTools.CallTool(const ToolName: string; Params: TJSONObject): TJSONValue;
 begin
-  // Allow status/project tools through even while parsing
-  if FParser.IsParsing and
-     (ToolName <> 'get_status') and
-     (ToolName <> 'set_project') then
+  // Allow status/project tools through always; guard others against bad state
+  if (ToolName <> 'get_status') and (ToolName <> 'set_project') then
   begin
-    Result := TJSONObject.Create;
-    TJSONObject(Result).AddPair('error',
-      'Server is currently parsing files. Use get_status to check progress.');
-    Exit;
+    if not FParser.IsConfigured then
+    begin
+      Result := TJSONObject.Create;
+      TJSONObject(Result).AddPair('error',
+        'No project configured. Call set_project first.');
+      Exit;
+    end;
+
+    if FParser.IsParsing then
+    begin
+      Result := TJSONObject.Create;
+      TJSONObject(Result).AddPair('error',
+        'Server is currently parsing files. Use get_status to check progress.');
+      Exit;
+    end;
   end;
 
   if ToolName = 'get_status' then
@@ -295,9 +304,6 @@ var
   F: string;
 begin
   try
-    if not FParser.IsConfigured then
-      raise Exception.Create('No project configured. Call set_project first.');
-
     Filter := GetStr(Params, 'filter');
     Files := FParser.ListFiles(Filter);
     Arr := TJSONArray.Create;
