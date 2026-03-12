@@ -20,6 +20,7 @@ type
     function NextId: Integer;
     function DoRequest(const Method: string; const Body: TStream = nil): TJSONValue;
     procedure WaitForReady(TimeoutMs: Integer = 15000);
+    procedure WaitForParseComplete(TimeoutMs: Integer = 30000);
     procedure DoHandshake;
     function GetResponseText(Response: IHTTPResponse): string;
     function JSONHasKey(Obj: TJSONObject; const Key: string): Boolean;
@@ -144,6 +145,66 @@ begin
   raise EMCPTestError.Create('Timeout waiting for server to be ready');
 end;
 
+procedure TMCPTestServer.WaitForParseComplete(TimeoutMs: Integer = 30000);
+var
+  StartTime: Cardinal;
+  Body: TStringStream;
+  JSON, ResultObj, ContentItem, StatusObj: TJSONObject;
+  Content: TJSONArray;
+  TextStr, StateStr: string;
+begin
+  StartTime := GetTickCount;
+  while GetTickCount - StartTime < Cardinal(TimeoutMs) do
+  begin
+    try
+      Body := TStringStream.Create(
+        Format('{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"get_status","arguments":{}}}', [NextId]),
+        TEncoding.UTF8);
+      try
+        Body.Position := 0;
+        JSON := DoRequest('get_status', Body) as TJSONObject;
+        try
+          if Assigned(JSON) then
+          begin
+            ResultObj := JSON.GetValue<TJSONObject>('result');
+            if Assigned(ResultObj) then
+            begin
+              Content := ResultObj.GetValue<TJSONArray>('content');
+              if Assigned(Content) and (Content.Count > 0) and (Content[0] is TJSONObject) then
+              begin
+                ContentItem := TJSONObject(Content[0]);
+                TextStr := ContentItem.GetValue<string>('text');
+                if TextStr <> '' then
+                begin
+                  StatusObj := TJSONObject.ParseJSONValue(TextStr) as TJSONObject;
+                  try
+                    if Assigned(StatusObj) then
+                    begin
+                      StateStr := StatusObj.GetValue<string>('state');
+                      if StateStr = 'idle' then
+                        Exit;
+                    end;
+                  finally
+                    StatusObj.Free;
+                  end;
+                end;
+              end;
+            end;
+          end;
+        finally
+          JSON.Free;
+        end;
+      finally
+        Body.Free;
+      end;
+    except
+      // Ignore errors, keep polling
+    end;
+    Sleep(500);
+  end;
+  raise EMCPTestError.Create('Timeout waiting for parse to complete');
+end;
+
 procedure TMCPTestServer.DoHandshake;
 var
   Body: TStringStream;
@@ -199,6 +260,8 @@ begin
   // Wait for server to be ready
   WaitForReady;
   DoHandshake;
+  // Wait for background parsing to complete before tests run
+  WaitForParseComplete;
 end;
 
 procedure TMCPTestServer.Stop;
