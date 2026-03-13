@@ -291,23 +291,30 @@ end;
 procedure TDirectToolsGetMethodBodyTests.NonExistent_NoFile_RaisesException;
 var
   Params: TJSONObject;
-  Raised: Boolean;
+  Result: TJSONValue;
+  Obj: TJSONObject;
+  ErrorVal: TJSONValue;
 begin
   Params := TJSONObject.Create;
-  Params.AddPair('method_name', 'TFoo.Bar');
-  // No file - should search all and raise if not found
-  Raised := False;
+  Params.AddPair('method_name', 'TDoesNot.Exist');
+  // No file - should search all and return JSON error if not found
   try
-    FTools.DoGetMethodBody(Params);
-  except
-    on E: Exception do
-    begin
-      Raised := True;
-      Assert.Contains<string>(E.Message, 'not found', 'Exception should mention not found');
+    Result := FTools.DoGetMethodBody(Params);
+    try
+      Assert.IsNotNull(Result, 'Result should not be null');
+      Assert.IsTrue(Result is TJSONObject, 'Result should be TJSONObject');
+      Obj := TJSONObject(Result);
+
+      Assert.IsNotNull(Obj.Get('error'), 'Should have error field');
+      ErrorVal := Obj.GetValue('error');
+      Assert.IsTrue(ErrorVal.Value.ToLower.Contains('not found'),
+        'Error should mention not found, got: ' + ErrorVal.Value);
+    finally
+      Result.Free;
     end;
+  finally
+    Params.Free;
   end;
-  Assert.IsTrue(Raised, 'Should raise exception for non-existent method when no file specified');
-  Params.Free;
 end;
 
 initialization
