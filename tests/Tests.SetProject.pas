@@ -3,7 +3,7 @@ unit Tests.SetProject;
 interface
 
 uses
-  DUnitX.TestFramework, System.JSON, MCP.TestServer;
+  DUnitX.TestFramework, System.JSON, System.SysUtils, Winapi.Windows, MCP.TestServer;
 
 type
   [TestFixture]
@@ -76,19 +76,49 @@ var
   Args: TJSONObject;
   Result: TJSONValue;
   Arr: TJSONArray;
+  SetProjectResult: TJSONObject;
 begin
   // First configure the project
   Args := TJSONObject.Create;
   Args.AddPair('path', TMCPTestHelper.GetProjectPath);
   try
-    TMCPTestHelper.CallTool('set_project', Args);
+    SetProjectResult := TMCPTestHelper.CallTool('set_project', Args) as TJSONObject;
+    try
+      // Check that set_project returned the expected file count
+      Assert.IsNotNull(SetProjectResult.Get('files'), 'Should have files in result');
+    finally
+      SetProjectResult.Free;
+    end;
   finally
     Args.Free;
   end;
 
+  // Wait for parsing to complete (server to reach idle state)
+  var StatusResult: TJSONValue;
+  var StartTick := GetTickCount;
+  repeat
+    StatusResult := TMCPTestHelper.CallTool('get_status');
+    try
+      if (StatusResult is TJSONObject) and
+         (TJSONObject(StatusResult).GetValue<string>('state', '') = 'idle') then
+        Break;
+    finally
+      StatusResult.Free;
+    end;
+    Sleep(200);
+  until GetTickCount - StartTick > 15000;
+
   // Now list_files should work
   Result := TMCPTestHelper.CallTool('list_files');
   try
+    // If result is an error object, fail with specific message
+    if Result is TJSONObject then
+    begin
+      var ErrObj := TJSONObject(Result);
+      if ErrObj.Get('error') <> nil then
+        Assert.Fail('list_files returned error: ' + ErrObj.GetValue<string>('error', ''));
+    end;
+
     Assert.IsNotNull(Result, 'Result is nil');
     Arr := Result as TJSONArray;
     Assert.IsNotNull(Arr, 'Result is not an array');

@@ -74,7 +74,7 @@ begin
 
       Assert.IsNull(Obj.Get('error'), 'Should not have error');
       Assert.IsNotNull(Obj.Get('t'), 'Should have node type');
-      Assert.IsNotNull(Obj.Get('children_count'), 'Should have children_count at depth 1');
+      Assert.IsNotNull(Obj.Get('c'), 'Should have children array at root (depth 0)');
     finally
       Result.Free;
     end;

@@ -234,7 +234,7 @@ begin
     begin
       Result := TJSONObject.Create;
       TJSONObject(Result).AddPair('error',
-        'Server is still initializing. Use get_status to check progress.');
+        'Server is still parsing. Use get_status to check progress.');
       Exit;
     end;
   end;
@@ -395,22 +395,16 @@ begin
     AllTrees := FParser.GetAllTrees;
     for Pair in AllTrees do
     begin
-      try
-        Detail := ExtractTypeDetail(Pair.Value, TypeName);
-        // Check if the result actually found the type (has a 'name' field)
-        if (Detail.FindValue('name') <> nil) and
-           (Detail.FindValue('name').Value <> '') then
-        begin
-          Detail.AddPair('file', Pair.Key);
-          Result := Detail;
-          Exit;
-        end;
-        Detail.Free;
-      except
-        // Skip files that fail
+      Detail := ExtractTypeDetail(Pair.Value, TypeName);
+      if (Detail.FindValue('error') = nil) then
+      begin
+        Detail.AddPair('file', Pair.Key);
+        Result := Detail;
+        Exit;
       end;
+      Detail.Free;
     end;
-    raise Exception.CreateFmt('Type "%s" not found in any parsed file', [TypeName]);
+    raise Exception.Create('Type "' + TypeName + '" not found');
   end;
 end;
 
@@ -429,29 +423,26 @@ begin
   begin
     Tree := FParser.ParseFile(FileName);
     Result := ExtractMethodBody(Tree, MethodName);
-  end
-  else
+  end else
   begin
     // Search all cached trees for the method
     AllTrees := FParser.GetAllTrees;
     for Pair in AllTrees do
     begin
-      try
-        Body := ExtractMethodBody(Pair.Value, MethodName);
-        // Check if the result actually found the method (has a 'name' field)
-        if (Body.FindValue('name') <> nil) and
-           (Body.FindValue('name').Value <> '') then
-        begin
-          Body.AddPair('file', Pair.Key);
-          Result := Body;
-          Exit;
-        end;
-        Body.Free;
-      except
-        // Skip files that fail
+      Assert(Assigned(Pair.Value), 'Tree not assigned for ' + Pair.Key);
+      Body := ExtractMethodBody(Pair.Value, MethodName);
+      // Check if the result actually found the method (has a 'name' field)
+      if (Body.FindValue('error') = nil) then
+      begin
+        Body.AddPair('file', Pair.Key);
+        Result := Body;
+        Exit;
       end;
+      Body.Free;
     end;
-    raise Exception.CreateFmt('Method "%s" not found in any parsed file', [MethodName]);
+    Result := TJSONObject.Create;
+    TJSONObject(Result).AddPair('error', 'Method not found: ' + MethodName);
+    Exit;
   end;
 end;
 
@@ -828,6 +819,7 @@ var
     for Pair in AllTrees do
     begin
       try
+        Assert(Assigned(Pair.Value), 'Tree not assigned for ' + Pair.Key);
         Detail := ExtractTypeDetail(Pair.Value, ATypeName);
         if (Detail.FindValue('name') <> nil) and
            (Detail.FindValue('name').Value <> '') and
@@ -893,6 +885,30 @@ begin
       Chain.Free;
       Visited.Free;
       raise Exception.CreateFmt('Type "%s" not found in any parsed file', [TypeName]);
+    end;
+
+    // Check if the queried type itself was not found (first item is an unresolved stub)
+    // If so, add an error field to the result
+    if Chain.Count > 0 then
+    begin
+      var FirstVal := Chain.Items[0];
+      if (FirstVal <> nil) and (FirstVal is TJSONObject) then
+      begin
+        var FirstItem := TJSONObject(FirstVal);
+        if (FirstItem.FindValue('resolved') <> nil) and
+           not FirstItem.GetValue<Boolean>('resolved') then
+        begin
+          // The queried type was not found - add error field
+          ResultObj := TJSONObject.Create;
+          ResultObj.AddPair('error', 'Type "' + TypeName + '" not found in any parsed file');
+          ResultObj.AddPair('type_name', TypeName);
+          ResultObj.AddPair('chain', Chain);
+          ResultObj.AddPair('depth', TJSONNumber.Create(Chain.Count));
+          ResultObj.AddPair('complete', TJSONBool.Create(Complete));
+          Result := ResultObj;
+          Exit;
+        end;
+      end;
     end;
 
     ResultObj := TJSONObject.Create;

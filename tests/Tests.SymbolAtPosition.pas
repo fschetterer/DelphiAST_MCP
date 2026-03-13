@@ -27,7 +27,7 @@ begin
   Args := TJSONObject.Create;
   Args.AddPair('file', 'Dog.pas');
   Args.AddPair('line', TJSONNumber.Create(9)); // TDog = class(TAnimal) is around line 9
-  Args.AddPair('col', TJSONNumber.Create(1));
+  Args.AddPair('col', TJSONNumber.Create(3)); // Column where TDog starts (after 2 spaces indentation)
   try
     Result := TMCPTestHelper.CallTool('symbol_at_position', Args);
     try

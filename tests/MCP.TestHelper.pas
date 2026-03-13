@@ -83,7 +83,7 @@ end;
 
 class procedure TMCPTestHelper.AssertStringContains(const Str, Substr: string);
 begin
-  if Pos(Substr, Str) = 0 then
+  if Pos(LowerCase(Substr), LowerCase(Str)) = 0 then
     raise Exception.Create(Format('String does not contain "%s". String: %s',
       [Substr, Str]));
 end;

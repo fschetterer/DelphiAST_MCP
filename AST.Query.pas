@@ -1407,6 +1407,7 @@ var
     Child: TSyntaxNode;
     Name, Context, Qualified: string;
     Obj: TJSONObject;
+    NameNode: TSyntaxNode;
   begin
     // Check if this node is an identifier matching the search name
     if Node.Typ = ntIdentifier then
@@ -1437,10 +1438,38 @@ var
     else if Node.Typ = ntName then
     begin
       // ntName nodes with matching value are also usages (declarations)
+      // Also match unqualified portion of qualified names (e.g., "Speak" in "TDog.Speak")
       Name := NodeName(Node);
-      if SameText(Name, IdentName) then
+      if SameText(Name, IdentName) or
+         (Pos('.', Name) > 0) and SameText(Copy(Name, LastDelimiter('.', Name) + 1, MaxInt), IdentName) then
       begin
         Context := ClassifyUsageContext(Node);
+
+        Obj := TJSONObject.Create;
+        Obj.AddPair('name', Name);
+        Obj.AddPair('line', TJSONNumber.Create(Node.Line));
+        Obj.AddPair('col', TJSONNumber.Create(Node.Col));
+        Obj.AddPair('context', Context);
+        Obj.AddPair('file', FileName);
+        Result.Add(Obj);
+      end;
+    end
+    else if Node.Typ = ntMethod then
+    begin
+      // Check method name - could be in anName attribute or ntName child
+      Name := Node.GetAttribute(anName);
+      if Name = '' then
+      begin
+        // Try to get name from ntName child
+        NameNode := Node.FindNode(ntName);
+        if NameNode <> nil then
+          Name := NodeName(NameNode);
+      end;
+      // Also match unqualified portion of qualified names
+      if SameText(Name, IdentName) or
+         (Pos('.', Name) > 0) and SameText(Copy(Name, LastDelimiter('.', Name) + 1, MaxInt), IdentName) then
+      begin
+        Context := 'declaration';
 
         Obj := TJSONObject.Create;
         Obj.AddPair('name', Name);
@@ -1587,8 +1616,23 @@ var
     begin
       // Leaf node with no end info: only match its start line
       if L > Node.Line then Exit(False);
+    end
+    else
+    begin
+      // Node has children but no end line - compute max end line from children
+      var MaxChildLine := Node.Line;
+      for var Child in Node.ChildNodes do
+      begin
+        if Child is TCompoundSyntaxNode then
+        begin
+          if TCompoundSyntaxNode(Child).EndLine > MaxChildLine then
+            MaxChildLine := TCompoundSyntaxNode(Child).EndLine;
+        end
+        else if Child.Line > MaxChildLine then
+          MaxChildLine := Child.Line;
+      end;
+      if L > MaxChildLine then Exit(False);
     end;
-    // Else: node has children but no end line — treat as open-ended
 
     Result := True;
   end;

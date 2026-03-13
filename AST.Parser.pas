@@ -292,7 +292,8 @@ begin
       Exit;
     end;
 
-    Key := LowerCase(SourcePath);
+    // Canonicalize path to match ParseFile's key generation
+    Key := LowerCase(TPath.GetFullPath(SourcePath));
     Entry.Node := Root;
     Entry.ModifiedAt := ModifiedAt;
     Result := True;
@@ -511,6 +512,7 @@ var
   FileTime: TDateTime;
 begin
   FullPath := ResolveFilePath(AFileName);
+  FullPath := TPath.GetFullPath(FullPath);  // Canonicalize path to avoid duplicate cache entries
   Key := LowerCase(FullPath);
 
   // Fast path: read lock check

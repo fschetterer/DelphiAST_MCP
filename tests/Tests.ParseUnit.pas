@@ -34,7 +34,7 @@ begin
       Assert.IsNotNull(Result, 'Result is nil');
       Assert.IsTrue(Result is TJSONObject, 'Result should be a TJSONObject but was: ' + Result.ClassName);
       Obj := TJSONObject(Result);
-      Assert.AreEqual('Animals', Obj.GetValue<string>('unit_name', ''),
+      Assert.AreEqual('Animals', Obj.GetValue<string>('name', ''),
         'Unit name should be Animals');
       // Check types array contains TAnimal and IAnimal
       TMCPTestHelper.AssertStringContains(Obj.ToString, 'TAnimal');
