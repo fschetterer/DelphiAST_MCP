@@ -56,10 +56,10 @@ begin
 
   // Wait for background parse to complete (5 files, should be < 1 second)
   FTimeout := GetTickCount + 10000;
-  while FParser.IsParsing and (GetTickCount < FTimeout) do
+  while not FParser.IsReady and (GetTickCount < FTimeout) do
     Sleep(50);
 
-  Assert.IsFalse(FParser.IsParsing, 'Parser should have finished within timeout');
+  Assert.IsTrue(FParser.IsReady, 'Parser should be ready within timeout');
 
   FTools := TMCPTools.Create(FParser);
 end;

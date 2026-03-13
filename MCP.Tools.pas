@@ -230,11 +230,11 @@ begin
       Exit;
     end;
 
-    if FParser.IsParsing then
+    if not FParser.IsReady then
     begin
       Result := TJSONObject.Create;
       TJSONObject(Result).AddPair('error',
-        'Server is currently parsing files. Use get_status to check progress.');
+        'Server is still initializing. Use get_status to check progress.');
       Exit;
     end;
   end;

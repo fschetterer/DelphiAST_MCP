@@ -42,6 +42,7 @@ type
     FCacheDir: string;
     FWatcher: TObject;
     FParseState: Integer;
+    FHasParsed: Integer;
     FTotalFiles: Integer;
     FParsedFiles: Integer;
     FCachedFiles: Integer;
@@ -71,6 +72,7 @@ type
     procedure Reconfigure(const ARoots: TArray<string>);
     function IsConfigured: Boolean;
     function IsParsing: Boolean;
+    function IsReady: Boolean;
     function GetParseStatus: TParseStatus;
 
     property ProjectRoot: string read GetProjectRoot;
@@ -387,6 +389,9 @@ begin
   FIncludeHandler := TSimpleIncludeHandler.Create(FRoots);
   InitCacheDir;
 
+  // Reset parse state - will be ready again after ParseAllFiles completes
+  TInterlocked.Exchange(FHasParsed, 0);
+
   // 5. Start new watcher
   FWatcher := TDirectoryWatcher.Create(FRoots,
     procedure(APath: string)
@@ -416,6 +421,11 @@ end;
 function TASTParser.IsParsing: Boolean;
 begin
   Result := FParseState = Integer(psParsing);
+end;
+
+function TASTParser.IsReady: Boolean;
+begin
+  Result := (FHasParsed = 1) and (FParseState = Integer(psIdle));
 end;
 
 function TASTParser.GetParseStatus: TParseStatus;
@@ -614,6 +624,7 @@ begin
       IntToStr(Failed) + ' failed');
   finally
     TInterlocked.Exchange(FParseState, Integer(psIdle));
+    TInterlocked.Exchange(FHasParsed, 1);
   end;
 end;
 
