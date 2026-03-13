@@ -766,7 +766,7 @@ begin
     if Sections.Count > 0 then
       Result.AddPair('sections', Sections)
     else
-      Sections.Free;
+      FreeAndNil(Sections);
 
     // For records/enums without visibility sections, extract directly
     if (Sections = nil) or (Sections.Count = 0) then
