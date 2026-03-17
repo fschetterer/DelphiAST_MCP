@@ -84,8 +84,8 @@ begin
   try
     SetProjectResult := TMCPTestHelper.CallTool('set_project', Args) as TJSONObject;
     try
-      // Check that set_project returned the expected file count
-      Assert.IsNotNull(SetProjectResult.Get('files'), 'Should have files in result');
+      // Check that set_project returned the expected dpr files
+      Assert.IsNotNull(SetProjectResult.Get('dprFiles'), 'Should have dprFiles in result');
     finally
       SetProjectResult.Free;
     end;

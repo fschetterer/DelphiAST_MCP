@@ -66,8 +66,8 @@ begin
       Assert.IsTrue(SetProjectResult is TJSONObject, 'SetProject result should be TJSONObject');
       Assert.IsNull(TJSONObject(SetProjectResult).Get('error'), 'SetProject should not return an error');
 
-      // Check that set_project returned files
-      Assert.IsNotNull(TJSONObject(SetProjectResult).Get('files'), 'Should have files in result');
+      // Check that set_project returned dprFiles
+      Assert.IsNotNull(TJSONObject(SetProjectResult).Get('dprFiles'), 'Should have dprFiles in result');
     finally
       SetProjectResult.Free;
     end;

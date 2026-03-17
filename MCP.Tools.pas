@@ -208,7 +208,8 @@ begin
   Props.AddPair('path', MakeStringProp('Absolute path to the project root directory'));
   Result.Add(MakeTool('set_project',
     'Set the project root directory. Reads .delphi-ast.json for library paths. ' +
-    'Call this before using other tools to point the server at your project.',
+    'Returns DPR files found and configured library paths with validation status. ' +
+    'Call this before using other tools.',
     MakeInputSchema(Props, ['path'])));
 
   // 14. get_status
@@ -1235,13 +1236,24 @@ begin
 end;
 
 function TMCPTools.DoSetProject(Params: TJSONObject): TJSONValue;
+type
+  TLibPathInfo = record
+    Path: string;
+    Exists: Boolean;
+  end;
 var
   ProjectPath, ConfigFile, ConfigText: string;
   ConfigJSON, LibPathsObj: TJSONValue;
   LibPathsArr: TJSONArray;
   Roots: TArray<string>;
+  LibPaths: TArray<TLibPathInfo>;
+  DPRFiles: TArray<string>;
   I: Integer;
-  ResultObj: TJSONObject;
+  ResultObj, LibPathObj: TJSONObject;
+  LibPathArr: TJSONArray;
+  DPRArr: TJSONArray;
+  DPR: string;
+  ConfigFound: Boolean;
 begin
   ProjectPath := GetStr(Params, 'path');
   if ProjectPath = '' then
@@ -1260,14 +1272,32 @@ begin
   // Normalize the project path to resolve any .. or . components
   ProjectPath := ExpandFileName(ProjectPath);
 
+  // Log project path
+  WriteLn(ErrOutput, '[delphi-ast] Project: ' + ProjectPath);
+
   // Start with project root
   SetLength(Roots, 1);
   Roots[0] := ProjectPath;
 
+  // Find DPR files early for logging and response
+  DPRFiles := TDirectory.GetFiles(ProjectPath, '*.dpr');
+  for DPR in DPRFiles do
+    WriteLn(ErrOutput, '[delphi-ast] DPR: ' + TPath.GetFullPath(DPR));
+
+  // Require at least one DPR file in the project root
+  if Length(DPRFiles) = 0 then
+  begin
+    Result := TJSONObject.Create;
+    TJSONObject(Result).AddPair('error', 'No .dpr files found in: ' + ProjectPath);
+    Exit;
+  end;
+
   // Read .delphi-ast.json if present
   ConfigFile := TPath.Combine(ProjectPath, '.delphi-ast.json');
-  if FileExists(ConfigFile) then
+  ConfigFound := FileExists(ConfigFile);
+  if ConfigFound then
   begin
+    WriteLn(ErrOutput, '[delphi-ast] Config: ' + ConfigFile);
     ConfigText := TFile.ReadAllText(ConfigFile);
     ConfigJSON := TJSONObject.ParseJSONValue(ConfigText);
     try
@@ -1283,24 +1313,32 @@ begin
           var LibPath := LibPathsArr.Items[I].Value;
           if TPath.IsRelativePath(LibPath) then
             LibPath := TPath.Combine(ProjectPath, LibPath);
-          Roots[High(Roots)] := ExpandFileName(LibPath);
+          var ResolvedPath := ExpandFileName(LibPath);
+          Roots[High(Roots)] := ResolvedPath;
+
+          // Track library path with existence status
+          SetLength(LibPaths, Length(LibPaths) + 1);
+          LibPaths[High(LibPaths)].Path := ResolvedPath;
+          LibPaths[High(LibPaths)].Exists := DirectoryExists(ResolvedPath);
+
+          // Log library path with status
+          if LibPaths[High(LibPaths)].Exists then
+            WriteLn(ErrOutput, '[delphi-ast] Library path: ' + ResolvedPath + ' (OK)')
+          else
+            WriteLn(ErrOutput, '[delphi-ast] Library path: ' + ResolvedPath + ' (NOT FOUND)');
         end;
       end;
     finally
       ConfigJSON.Free;
     end;
+  end
+  else
+  begin
+    WriteLn(ErrOutput, '[delphi-ast] Config: none');
   end;
 
   // Expand each root to include all subdirectories recursively
   Roots := ExpandWithSubdirs(Roots);
-
-  // Require at least one DPR file in the project root
-  if Length(TDirectory.GetFiles(ProjectPath, '*.dpr')) = 0 then
-  begin
-    Result := TJSONObject.Create;
-    TJSONObject(Result).AddPair('error', 'No .dpr files found in: ' + ProjectPath);
-    Exit;
-  end;
 
   // Reconfigure parser with new roots
   FParser.Reconfigure(Roots);
@@ -1308,13 +1346,30 @@ begin
   // Return result
   ResultObj := TJSONObject.Create;
   ResultObj.AddPair('project', ProjectPath);
-  // Return 0 - file count is meaningless before parsing completes, callers poll is_ready
-  ResultObj.AddPair('files', TJSONNumber.Create(0));
-  // Include library paths in response
-  LibPathsArr := TJSONArray.Create;
-  for I := 1 to High(Roots) do
-    LibPathsArr.Add(Roots[I]);
-  ResultObj.AddPair('libraryPaths', LibPathsArr);
+
+  // Include config status
+  if ConfigFound then
+    ResultObj.AddPair('config', '.delphi-ast.json')
+  else
+    ResultObj.AddPair('config', 'none');
+
+  // Include DPR files found
+  DPRArr := TJSONArray.Create;
+  for DPR in DPRFiles do
+    DPRArr.Add(TPath.GetFullPath(DPR));
+  ResultObj.AddPair('dprFiles', DPRArr);
+
+  // Include library paths with validation status
+  LibPathArr := TJSONArray.Create;
+  for I := 0 to High(LibPaths) do
+  begin
+    LibPathObj := TJSONObject.Create;
+    LibPathObj.AddPair('path', LibPaths[I].Path);
+    LibPathObj.AddPair('exists', TJSONBool.Create(LibPaths[I].Exists));
+    LibPathArr.Add(LibPathObj);
+  end;
+  ResultObj.AddPair('libraryPaths', LibPathArr);
+
   Result := ResultObj;
 end;
 
