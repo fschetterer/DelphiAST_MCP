@@ -1,4 +1,4 @@
-unit MCP.Tools;
+﻿unit MCP.Tools;
 
 interface
 
@@ -39,7 +39,35 @@ type
 implementation
 
 uses
-  SysUtils, Classes, IOUtils, Generics.Collections, DelphiAST.Classes, DelphiAST.Consts, AST.Query;
+  SysUtils, Classes, IOUtils, Generics.Collections, DelphiAST.Classes, DelphiAST.Consts, AST.Query,
+  System.RegularExpressions;
+
+{ Convert Linux/WSL paths to Windows paths }
+function ConvertPathToWindows(const APath: string): string;
+var
+  Match: TMatch;
+  DriveLetter: string;
+begin
+  Result := APath;
+  if APath = '' then
+    Exit;
+
+  // Handle /mnt/x/... WSL paths
+  Match := TRegEx.Match(APath, '^/mnt/([a-zA-Z])(/.*)$');
+  if Match.Success then
+  begin
+    DriveLetter := UpperCase(Match.Groups[1].Value);
+    Result := DriveLetter + ':' + StringReplace(Match.Groups[2].Value, '/', '\', [rfReplaceAll]);
+    Exit;
+  end;
+
+  // Handle other Unix paths (starting with /)
+  if (Length(APath) > 0) and (APath[1] = '/') then
+  begin
+    Result := StringReplace(APath, '/', '\', [rfReplaceAll]);
+    Exit;
+  end;
+end;
 
 { TMCPTools }
 
@@ -328,6 +356,12 @@ begin
     Result := Default;
 end;
 
+{ Get a path parameter and convert from Linux/WSL to Windows format }
+function GetPath(Params: TJSONObject; const Key: string; const Default: string = ''): string;
+begin
+  Result := ConvertPathToWindows(GetStr(Params, Key, Default));
+end;
+
 function GetInt(Params: TJSONObject; const Key: string; Default: Integer): Integer;
 var
   V: TJSONValue;
@@ -376,7 +410,7 @@ var
   Overview, Item: TJSONObject;
   TypeCount, RoutineCount: Integer;
 begin
-  FileName := GetStr(Params, 'file');
+  FileName := GetPath(Params, 'file');
 
   if FileName <> '' then
   begin
@@ -428,7 +462,7 @@ var
   Pair: TPair<string, TSyntaxNode>;
   Detail: TJSONObject;
 begin
-  FileName := GetStr(Params, 'file');
+  FileName := GetPath(Params, 'file');
   TypeName := GetStr(Params, 'type_name');
 
   if FileName <> '' then
@@ -464,7 +498,7 @@ var
   Pair: TPair<string, TSyntaxNode>;
   Body: TJSONObject;
 begin
-  FileName := GetStr(Params, 'file');
+  FileName := GetPath(Params, 'file');
   MethodName := GetStr(Params, 'method_name');
 
   if FileName <> '' then
@@ -505,7 +539,7 @@ var
 begin
   Pattern := GetStr(Params, 'pattern');
   Kind := GetStr(Params, 'kind');
-  SingleFile := GetStr(Params, 'file');
+  SingleFile := GetPath(Params, 'file');
 
   AllResults := TJSONArray.Create;
 
@@ -552,7 +586,7 @@ var
   IntfNode, ImplNode, UsesNode, Child: TSyntaxNode;
   UsedBy: TJSONArray;
 begin
-  FileName := GetStr(Params, 'file');
+  FileName := GetPath(Params, 'file');
   Tree := FParser.ParseFile(FileName);
 
   UnitName := Tree.GetAttribute(anName);
@@ -626,8 +660,8 @@ var
   MaxDepth: Integer;
   Tree: TSyntaxNode;
 begin
-  FileName := GetStr(Params, 'file');
-  Path := GetStr(Params, 'path');
+  FileName := GetPath(Params, 'file');
+  Path := GetPath(Params, 'path');
   MaxDepth := GetInt(Params, 'max_depth', 3);
   Tree := FParser.ParseFile(FileName);
   Result := ExtractSyntaxTree(Tree, Path, MaxDepth);
@@ -661,7 +695,7 @@ var
   Context: string;
 begin
   IdentName := GetStr(Params, 'name');
-  SingleFile := GetStr(Params, 'file');
+  SingleFile := GetPath(Params, 'file');
   IncludeDecls := GetBool(Params, 'include_declarations', True);
 
   AllResults := TJSONArray.Create;
@@ -734,7 +768,7 @@ var
   I: Integer;
 begin
   SymbolName := GetStr(Params, 'symbol');
-  FileName := GetStr(Params, 'file');
+  FileName := GetPath(Params, 'file');
   StartLine := GetInt(Params, 'start_line', 0);
   EndLine := GetInt(Params, 'end_line', 0);
 
@@ -839,7 +873,7 @@ var
   Line, Col: Integer;
   Tree: TSyntaxNode;
 begin
-  FileName := GetStr(Params, 'file');
+  FileName := GetPath(Params, 'file');
   Line := GetInt(Params, 'line', 0);
   Col := GetInt(Params, 'col', 0);
 
@@ -1255,7 +1289,7 @@ var
   DPR: string;
   ConfigFound: Boolean;
 begin
-  ProjectPath := GetStr(Params, 'path');
+  ProjectPath := GetPath(Params, 'path');
   if ProjectPath = '' then
   begin
     Result := TJSONObject.Create;
@@ -1309,8 +1343,8 @@ begin
         for I := 0 to LibPathsArr.Count - 1 do
         begin
           SetLength(Roots, Length(Roots) + 1);
-          // Support both absolute paths and paths relative to the project
-          var LibPath := LibPathsArr.Items[I].Value;
+          // Convert Linux/WSL paths, support both absolute and relative paths
+          var LibPath := ConvertPathToWindows(LibPathsArr.Items[I].Value);
           if TPath.IsRelativePath(LibPath) then
             LibPath := TPath.Combine(ProjectPath, LibPath);
           var ResolvedPath := ExpandFileName(LibPath);

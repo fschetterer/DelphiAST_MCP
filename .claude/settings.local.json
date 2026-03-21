@@ -15,6 +15,15 @@
       "mcp__delphi-ast__get_uses_graph",
       "mcp__delphi-ast__resolve_inheritance",
       "mcp__delphi-ast__set_project"
+      "Bash(ls:*)",
+      "mcp__delphi-ast__get_status",
+      "mcp__delphi-ast__find_descendants",
+      "mcp__delphi-ast__search_symbols",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git checkout:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git commit:*)"
     ]
   },
   "enabledMcpjsonServers": [

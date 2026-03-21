@@ -72,6 +72,8 @@ C#/
 *.projdata
 *.tvsconfig
 *.dsk
+*.dsv
+*.skincfg
 
 # Delphi history and backups
 __history/

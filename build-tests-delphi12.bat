@@ -1,0 +1,27 @@
+@echo off
+REM Build script for DelphiAST_MCP Test Project - Delphi 12 Athens
+
+set DELPHI_BIN=C:\Program Files (x86)\Embarcadero\Studio\29.0\bin
+set DCC=%DELPHI_BIN%\dcc64.exe
+set DUNITX_SRC=C:\Program Files (x86)\Embarcadero\Studio\29.0\source\DUnitX
+set PROJECT_ROOT=%~dp0
+set PROJECT_ROOT=%PROJECT_ROOT:~0,-1%
+set DELPHIAST_SRC=%PROJECT_ROOT%\..\DelphiAST\Source
+set DELPHIAST2_SRC=%PROJECT_ROOT%\..\DelphiAST\Source\SimpleParser
+
+echo Building DelphiAST_MCP Tests...
+
+"%DCC%" -B ^
+  -I"%DUNITX_SRC%" ^
+  -U"%DELPHIAST_SRC%" ^
+  -U"%DELPHIAST2_SRC%" ^
+  -U"%PROJECT_ROOT%" ^
+  -NS"System;System.Win;Winapi;DUnitX" ^
+  -NUdcu64 -Ebin64 tests\DelphiAST_MCP_Tests.dpr
+
+if %ERRORLEVEL% EQU 0 (
+    echo Build successful!
+) else (
+    echo Build failed!
+    exit /b %ERRORLEVEL%
+)

@@ -1,8 +1,9 @@
-unit AST.Parser;
+﻿unit AST.Parser;
 
 interface
 
 uses
+  Winapi.Wincodec,
   SysUtils, Classes, Generics.Collections, IOUtils, System.SyncObjs,
   DelphiAST, DelphiAST.Classes, DelphiAST.Consts,
   SimpleParser.Lexer.Types;
@@ -821,6 +822,7 @@ begin
       Key := LowerCase(FullPath);
 
       try
+        TInterlocked.Increment(FTotalFiles);
         WriteLn(Output, '[delphi-ast] Checking: '+key);
         // Check if already in cache with fresh timestamp
         AlreadyCached := False;

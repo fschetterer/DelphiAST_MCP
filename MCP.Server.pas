@@ -1,4 +1,4 @@
-unit MCP.Server;
+﻿unit MCP.Server;
 
 interface
 
@@ -209,7 +209,6 @@ var
   Id: TJSONValue;
   V: TJSONValue;
 begin
-  JSON := nil;
   try
     JSON := TJSONObject.ParseJSONValue(Line) as TJSONObject;
   except
@@ -281,6 +280,18 @@ var
   RequestStream: TStream;
   Bytes: TBytes;
 begin
+
+
+  // Handle GET - return server info
+  if ARequestInfo.CommandType = hcGet then
+  begin
+    AResponseInfo.ContentText  := Format(
+      '{"mcp":"delphi-ast","url":"http://%s:%d","transport":"http"}',
+      ['localhost', FPort]);
+    AResponseInfo.ResponseNo  := 404;
+    Exit;
+  end;
+
   // Only accept POST /mcp
   if (ARequestInfo.CommandType <> hcPOST) or
      (ARequestInfo.Document <> '/mcp') then
