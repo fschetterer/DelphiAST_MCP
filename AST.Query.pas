@@ -1,4 +1,4 @@
-unit AST.Query;
+﻿unit AST.Query;
 
 interface
 
@@ -787,7 +787,6 @@ var
   N: TSyntaxNode;
   FirstMatch: TSyntaxNode;
 begin
-  Result := nil;
   TypeDecls := TList<TSyntaxNode>.Create;
   try
     CollectNodes(Tree, ntTypeDecl, TypeDecls);
@@ -2236,7 +2235,6 @@ var
   AllDecls: TList<TSyntaxNode>;
   N: TSyntaxNode;
   Name, DeclKind, LowerPattern: string;
-  Obj: TJSONObject;
   Results: TList<TSymbolMatch>;
   Match: TSymbolMatch;
   Pair: TPair<string, TSyntaxNode>;

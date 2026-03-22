@@ -37,12 +37,12 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
         <SanitizedProjectName>DelphiAST_MCP</SanitizedProjectName>
+        <VerInfo_Locale>4105</VerInfo_Locale>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base_Win64)'!=''">
         <DCC_DcuOutput>DCUs</DCC_DcuOutput>
         <DCC_ExeOutput>.</DCC_ExeOutput>
-        <DCC_UnitSearchPath>..\DelphiAST\Source;..\DelphiAST\Source\SimpleParser;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
-        <VerInfo_Locale>4105</VerInfo_Locale>
+        <DCC_UnitSearchPath>DelphiAST\Source;DelphiAST\Source\SimpleParser;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <Manifest_File>(None)</Manifest_File>
         <AppDPIAwarenessMode>none</AppDPIAwarenessMode>
         <DCC_Namespace>Data.Win;System;System.Win;Winapi;$(DCC_Namespace)</DCC_Namespace>

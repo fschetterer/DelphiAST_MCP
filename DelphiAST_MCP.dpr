@@ -14,6 +14,8 @@ uses
   MCP.Tools in 'MCP.Tools.pas',
   MCP.Server in 'MCP.Server.pas';
 
+{$R *.res}
+
 var
   ProjectRoot: string;
   ExtraPaths: TArray<string>;

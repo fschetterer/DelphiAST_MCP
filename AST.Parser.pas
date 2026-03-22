@@ -3,7 +3,7 @@
 interface
 
 uses
-  Winapi.Wincodec,
+  Winapi.Windows,
   SysUtils, Classes, Generics.Collections, IOUtils, System.SyncObjs,
   DelphiAST, DelphiAST.Classes, DelphiAST.Consts,
   SimpleParser.Lexer.Types;
@@ -541,7 +541,6 @@ function TASTParser.ListFiles(const NameFilter: string): TArray<string>;
 var
   Files: TStringList;
   FullPath, RelPath, LowerFilter, Root, Ext: string;
-  I: Integer;
 begin
   Files := TStringList.Create;
   try
@@ -763,7 +762,6 @@ var
   Parsed, Failed, Cached: Integer;
   Entry: TCachedTree;
   AlreadyCached: Boolean;
-  FileTime: TDateTime;
 begin
   // Set parsing state and reset counters
   TInterlocked.Exchange(FParseState, Integer(psParsing));
