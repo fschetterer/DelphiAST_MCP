@@ -107,7 +107,7 @@ begin
     FConfig.IsAvailable := False;
     FConfig.Version := '';
 
-    if not ExecuteProcess('"' + FConfig.ExePath + '" --version', '', 5000,
+    if not ExecuteProcess('cmd /c ""' + FConfig.ExePath + '" --version""', '', 5000,
       Output, ExitCode) then
       Exit;
 
@@ -132,7 +132,7 @@ end;
 function TAstGrepWrapper.BuildCommandLine(const APattern, ASearchPath: string;
   AUseJson: Boolean): string;
 begin
-  Result := '"' + FConfig.ExePath + '" run';
+  Result := 'cmd /c ""' + FConfig.ExePath + '" run';
   if FConfig.ConfigPath <> '' then
     Result := Result + ' -c "' + FConfig.ConfigPath + '"';
   Result := Result + ' --pattern "' + APattern + '" -l pascal';
@@ -140,6 +140,7 @@ begin
     Result := Result + ' --json';
   if ASearchPath <> '' then
     Result := Result + ' "' + ASearchPath + '"';
+  Result := Result + '"';  // Close outer cmd /c quote
 end;
 
 function TAstGrepWrapper.ExecuteProcess(const ACommandLine, AWorkDir: string;

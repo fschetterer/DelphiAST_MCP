@@ -1,32 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "mcp__delphi-ast__find_usages",
-      "mcp__delphi-ast__get_source",
-      "mcp__delphi-ast__symbol_at_position",
-      "mcp__delphi-ast__get_syntax_tree",
-      "mcp__delphi-ast__find_references",
-      "mcp__delphi-ast__parse_unit",
       "mcp__delphi-ast__list_files",
-      "mcp__delphi-ast__get_type_detail",
-      "mcp__delphi-ast__get_call_graph",
-      "Bash(grep:*)",
-      "mcp__delphi-ast__get_method_body",
-      "mcp__delphi-ast__get_uses_graph",
-      "mcp__delphi-ast__resolve_inheritance",
-      "mcp__delphi-ast__set_project"
-      "Bash(ls:*)",
-      "mcp__delphi-ast__get_status",
-      "mcp__delphi-ast__find_descendants",
       "mcp__delphi-ast__search_symbols",
-      "Bash(git add:*)",
-      "Bash(git rm:*)",
-      "Bash(git checkout:*)",
-      "Bash(git cherry-pick:*)",
-      "Bash(git commit:*)"
+      "mcp__delphi-ast__parse_unit",
+      "mcp__delphi-ast__get_syntax_tree",
+      "mcp__delphi-ast__set_project"
     ]
   },
-  "enabledMcpjsonServers": [
-    "delphi-ast"
-  ]
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false
+  }
 }

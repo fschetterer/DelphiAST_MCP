@@ -51,6 +51,21 @@ Alternatively, configure explicitly in `.delphi-ast.json`:
 - **Pre-filter acceleration**: `search_symbols`, `find_references`, `find_usages` use ast-grep to narrow candidate files before running full DelphiAST queries. Only activates when ast-grep is available, pattern is a simple identifier, and project has >20 files. Falls back to full scan on any failure.
 - **Graceful degradation**: If ast-grep is unavailable (no DLL, not on PATH), all tools work exactly as before — pure DelphiAST.
 
+### Pattern Limitations
+
+Patterns must form a **complete syntactic node** in the grammar — incomplete statement fragments produce ERROR nodes and match nothing.
+
+| Pattern | Works? | Reason |
+|---------|--------|--------|
+| `$A := $B` | ✓ | Complete assignment node |
+| `procedure $NAME` | ✓ | Complete procedure heading |
+| `$A.Free` | ✓ | Complete method call |
+| `raise $E` | ✓ | Complete raise statement |
+| `if $COND then` | ✗ | `if` without body is syntactically incomplete |
+| `procedure $NAME($$$ARGS)` | ✗ | `$$$` multi-match unsupported in param lists |
+
+For `if` patterns, match the body instead: `if $COND then $BODY` — or search for the condition expression directly.
+
 ## DelphiAST Library Notes
 
 - Field/variable/parameter names stored as `TValuedSyntaxNode` children with `ntName` type (use `.Value`, not `.GetAttribute(anName)`)
