@@ -1,4 +1,4 @@
-program DelphiAST_MCP;
+﻿program DelphiAST_MCP;
 
 {$APPTYPE CONSOLE}
 
@@ -11,6 +11,7 @@ uses
   AST.Serialize in 'AST.Serialize.pas',
   AST.Watcher in 'AST.Watcher.pas',
   AST.Query in 'AST.Query.pas',
+  AST.AstGrep in 'AST.AstGrep.pas',
   MCP.Tools in 'MCP.Tools.pas',
   MCP.Server in 'MCP.Server.pas';
 

@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__mcp-server__delphi_build",
+      "mcp__mcp-server__delphi_definition",
+      "mcp__mcp-server__delphi_document_symbols",
+      "mcp__mcp-server__delphi_hover",
+      "mcp__mcp-server__delphi_index",
+      "mcp__mcp-server__delphi_lookup",
+      "mcp__mcp-server__delphi_references",
+      "mcp__mcp-server__echo",
+      "mcp__mcp-server__get_time",
+      "mcp__mcp-server__windows_dir",
+      "mcp__mcp-server__windows_exec",
+      "mcp__mcp-server__windows_exists",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git checkout:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Skill(commit)"
+    ]
+  }
+}

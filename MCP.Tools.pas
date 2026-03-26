@@ -3,14 +3,18 @@
 interface
 
 uses
-  System.JSON, AST.Parser;
+  System.JSON, System.Generics.Collections, DelphiAST.Classes, AST.Parser, AST.AstGrep;
 
 type
   TMCPTools = class
   private
     FParser: TASTParser;
+    FAstGrep: TAstGrepWrapper;
+    function FilterTreesByAstGrep(const ATrees: TArray<TPair<string, TSyntaxNode>>;
+      const AIdentifier: string): TArray<TPair<string, TSyntaxNode>>;
   public
     constructor Create(AParser: TASTParser);
+    destructor Destroy; override;
 
     function GetToolDefinitions: TJSONArray;
     function CallTool(const ToolName: string; Params: TJSONObject): TJSONValue;
@@ -32,14 +36,16 @@ type
     function DoIsReady(Params: TJSONObject): TJSONValue;
     function DoFindDescendants(Params: TJSONObject): TJSONValue;
     function DoSearchSymbols(Params: TJSONObject): TJSONValue;
+    function DoSearchPattern(Params: TJSONObject): TJSONValue;
 
     property Parser: TASTParser read FParser;
+    property AstGrep: TAstGrepWrapper read FAstGrep;
   end;
 
 implementation
 
 uses
-  SysUtils, Classes, IOUtils, Generics.Collections, DelphiAST.Classes, DelphiAST.Consts, AST.Query,
+  SysUtils, Classes, IOUtils, DelphiAST.Consts, AST.Query,
   System.RegularExpressions;
 
 { Convert Linux/WSL paths to Windows paths }
@@ -75,6 +81,13 @@ constructor TMCPTools.Create(AParser: TASTParser);
 begin
   inherited Create;
   FParser := AParser;
+  FAstGrep := TAstGrepWrapper.Create;
+end;
+
+destructor TMCPTools.Destroy;
+begin
+  FAstGrep.Free;
+  inherited;
 end;
 
 function MakeInputSchema(Props: TJSONObject; const Required: array of string): TJSONObject;
@@ -273,6 +286,19 @@ begin
     'Search for symbols by name across all parsed files. ' +
     'Supports substring matching with relevance ranking (exact > prefix > substring).',
     MakeInputSchema(Props, ['pattern'])));
+
+  // 18. search_pattern
+  Props := TJSONObject.Create;
+  Props.AddPair('pattern', MakeStringProp(
+    'ast-grep structural pattern. Examples: ''$A := $B'' (any assignment), ' +
+    '''$CALL($$$ARGS)'' (any call), ''for $VAR := $FROM to $TO do $BODY'' (any for loop).'));
+  Props.AddPair('path', MakeStringProp(
+    'Restrict search to this file or subdirectory. Default: project root.'));
+  Props.AddPair('max_results', MakeIntProp('Maximum matches to return. Default 100.', 100));
+  Result.Add(MakeTool('search_pattern',
+    'Structural code search using ast-grep patterns. Matches code structure ' +
+    '(assignments, calls, loops, etc.) not just text. Requires ast-grep to be installed.',
+    MakeInputSchema(Props, ['pattern'])));
 end;
 
 function TMCPTools.CallTool(const ToolName: string; Params: TJSONObject): TJSONValue;
@@ -332,6 +358,8 @@ begin
       Result := DoFindDescendants(Params)
     else if ToolName = 'search_symbols' then
       Result := DoSearchSymbols(Params)
+    else if ToolName = 'search_pattern' then
+      Result := DoSearchPattern(Params)
     else
     begin
       Result := TJSONObject.Create;
@@ -557,6 +585,7 @@ begin
   else
   begin
     AllTrees := FParser.GetAllTrees;
+    AllTrees := FilterTreesByAstGrep(AllTrees, Pattern);
     for Pair in AllTrees do
     begin
       try
@@ -724,6 +753,7 @@ begin
   else
   begin
     AllTrees := FParser.GetAllTrees;
+    AllTrees := FilterTreesByAstGrep(AllTrees, IdentName);
     for Pair in AllTrees do
     begin
       try
@@ -1335,31 +1365,51 @@ begin
     ConfigText := TFile.ReadAllText(ConfigFile);
     ConfigJSON := TJSONObject.ParseJSONValue(ConfigText);
     try
-      if (ConfigJSON is TJSONObject) and
-         TJSONObject(ConfigJSON).TryGetValue('libraryPaths', LibPathsObj) and
-         (LibPathsObj is TJSONArray) then
+      if (ConfigJSON is TJSONObject) then
       begin
-        LibPathsArr := TJSONArray(LibPathsObj);
-        for I := 0 to LibPathsArr.Count - 1 do
+        // Read library paths
+        if TJSONObject(ConfigJSON).TryGetValue('libraryPaths', LibPathsObj) and
+           (LibPathsObj is TJSONArray) then
         begin
-          SetLength(Roots, Length(Roots) + 1);
-          // Convert Linux/WSL paths, support both absolute and relative paths
-          var LibPath := ConvertPathToWindows(LibPathsArr.Items[I].Value);
-          if TPath.IsRelativePath(LibPath) then
-            LibPath := TPath.Combine(ProjectPath, LibPath);
-          var ResolvedPath := ExpandFileName(LibPath);
-          Roots[High(Roots)] := ResolvedPath;
+          LibPathsArr := TJSONArray(LibPathsObj);
+          for I := 0 to LibPathsArr.Count - 1 do
+          begin
+            SetLength(Roots, Length(Roots) + 1);
+            // Convert Linux/WSL paths, support both absolute and relative paths
+            var LibPath := ConvertPathToWindows(LibPathsArr.Items[I].Value);
+            if TPath.IsRelativePath(LibPath) then
+              LibPath := TPath.Combine(ProjectPath, LibPath);
+            var ResolvedPath := ExpandFileName(LibPath);
+            Roots[High(Roots)] := ResolvedPath;
 
-          // Track library path with existence status
-          SetLength(LibPaths, Length(LibPaths) + 1);
-          LibPaths[High(LibPaths)].Path := ResolvedPath;
-          LibPaths[High(LibPaths)].Exists := DirectoryExists(ResolvedPath);
+            // Track library path with existence status
+            SetLength(LibPaths, Length(LibPaths) + 1);
+            LibPaths[High(LibPaths)].Path := ResolvedPath;
+            LibPaths[High(LibPaths)].Exists := DirectoryExists(ResolvedPath);
 
-          // Log library path with status
-          if LibPaths[High(LibPaths)].Exists then
-            WriteLn(ErrOutput, '[delphi-ast] Library path: ' + ResolvedPath + ' (OK)')
-          else
-            WriteLn(ErrOutput, '[delphi-ast] Library path: ' + ResolvedPath + ' (NOT FOUND)');
+            // Log library path with status
+            if LibPaths[High(LibPaths)].Exists then
+              WriteLn(ErrOutput, '[delphi-ast] Library path: ' + ResolvedPath + ' (OK)')
+            else
+              WriteLn(ErrOutput, '[delphi-ast] Library path: ' + ResolvedPath + ' (NOT FOUND)');
+          end;
+        end;
+
+        // Read ast-grep config (explicit override)
+        var AstGrepObj: TJSONObject;
+        if TJSONObject(ConfigJSON).TryGetValue<TJSONObject>('astGrep', AstGrepObj) then
+        begin
+          var ExePath := AstGrepObj.GetValue<string>('exe', 'ast-grep');
+          var CfgPath := AstGrepObj.GetValue<string>('configPath', '');
+          if CfgPath <> '' then
+          begin
+            CfgPath := ConvertPathToWindows(CfgPath);
+            if TPath.IsRelativePath(CfgPath) then
+              CfgPath := TPath.Combine(ProjectPath, CfgPath);
+            CfgPath := ExpandFileName(CfgPath);
+          end;
+          FAstGrep.Configure(ExePath, CfgPath);
+          WriteLn(ErrOutput, '[delphi-ast] ast-grep: configured from .delphi-ast.json');
         end;
       end;
     finally
@@ -1367,8 +1417,37 @@ begin
     end;
   end
   else
-  begin
     WriteLn(ErrOutput, '[delphi-ast] Config: none');
+
+  // Auto-discover ast-grep config from exe directory if not explicitly configured
+  if FAstGrep.Config.ConfigPath = '' then
+  begin
+    var ExeDir := ExtractFilePath(ParamStr(0));
+    var DllPath := TPath.Combine(ExeDir, 'pascal.dll');
+    var SgConfig := TPath.Combine(ExeDir, 'sgconfig.yml');
+
+    if FileExists(DllPath) then
+    begin
+      // Auto-create sgconfig.yml if missing
+      if not FileExists(SgConfig) then
+      begin
+        var Writer := TStreamWriter.Create(SgConfig, False, TUTF8Encoding.Create(False));
+        try
+          Writer.WriteLine('customLanguages:');
+          Writer.WriteLine('  pascal:');
+          Writer.WriteLine('    libraryPath: pascal.dll');
+          Writer.WriteLine('    extensions: [pas, pp, dpr, dpk, lpr, inc]');
+          Writer.WriteLine('    expandoChar: _');
+        finally
+          Writer.Free;
+        end;
+        WriteLn(ErrOutput, '[delphi-ast] Created: ' + SgConfig);
+      end;
+      FAstGrep.Configure('ast-grep', SgConfig);
+      WriteLn(ErrOutput, '[delphi-ast] ast-grep: auto-configured from ' + ExeDir);
+    end
+    else
+      WriteLn(ErrOutput, '[delphi-ast] ast-grep: pascal.dll not found in ' + ExeDir);
   end;
 
   // Expand each root to include all subdirectories recursively
@@ -1376,6 +1455,15 @@ begin
 
   // Reconfigure parser with new roots
   FParser.Reconfigure(Roots);
+
+  // Probe ast-grep availability
+  if FAstGrep.Config.ConfigPath <> '' then
+  begin
+    if FAstGrep.Probe then
+      WriteLn(ErrOutput, '[delphi-ast] ast-grep: ' + FAstGrep.Config.Version)
+    else
+      WriteLn(ErrOutput, '[delphi-ast] ast-grep: probe failed');
+  end;
 
   // Return result
   ResultObj := TJSONObject.Create;
@@ -1403,6 +1491,12 @@ begin
     LibPathArr.Add(LibPathObj);
   end;
   ResultObj.AddPair('libraryPaths', LibPathArr);
+
+  // Include ast-grep status
+  if FAstGrep.IsAvailable then
+    ResultObj.AddPair('ast_grep', FAstGrep.Config.Version)
+  else
+    ResultObj.AddPair('ast_grep', 'unavailable');
 
   Result := ResultObj;
 end;
@@ -1487,6 +1581,59 @@ begin
   Result := ResultObj;
 end;
 
+function TMCPTools.FilterTreesByAstGrep(
+  const ATrees: TArray<TPair<string, TSyntaxNode>>;
+  const AIdentifier: string): TArray<TPair<string, TSyntaxNode>>;
+var
+  AstResult: TAstGrepResult;
+  CandidateSet: TDictionary<string, Boolean>;
+  Filtered: TList<TPair<string, TSyntaxNode>>;
+  Pair: TPair<string, TSyntaxNode>;
+  F: string;
+begin
+  // Skip if ast-grep unavailable, identifier has metavars, or too few files
+  if not FAstGrep.IsAvailable then
+    Exit(ATrees);
+  if (Pos('$', AIdentifier) > 0) or (AIdentifier = '') then
+    Exit(ATrees);
+  if Length(ATrees) <= 20 then
+    Exit(ATrees);
+
+  AstResult := FAstGrep.FindCandidateFiles(AIdentifier, FParser.ProjectRoot);
+
+  // On failure or no results, fall back to full set
+  if not AstResult.Success then
+    Exit(ATrees);
+  if (Length(AstResult.CandidateFiles) = 0) and (Length(AstResult.ErrorFiles) = 0) then
+    Exit(ATrees);
+
+  // Build lookup set from candidate + error files
+  CandidateSet := TDictionary<string, Boolean>.Create;
+  try
+    for F in AstResult.CandidateFiles do
+      CandidateSet.AddOrSetValue(LowerCase(F), True);
+    for F in AstResult.ErrorFiles do
+      CandidateSet.AddOrSetValue(LowerCase(F), True);
+
+    Filtered := TList<TPair<string, TSyntaxNode>>.Create;
+    try
+      for Pair in ATrees do
+        if CandidateSet.ContainsKey(LowerCase(Pair.Key)) then
+          Filtered.Add(Pair);
+
+      // If filter produced nothing (path mismatch?), fall back to full set
+      if Filtered.Count = 0 then
+        Result := ATrees
+      else
+        Result := Filtered.ToArray;
+    finally
+      Filtered.Free;
+    end;
+  finally
+    CandidateSet.Free;
+  end;
+end;
+
 function TMCPTools.DoSearchSymbols(Params: TJSONObject): TJSONValue;
 var
   Pattern, Kind: string;
@@ -1502,6 +1649,7 @@ begin
   MaxResults := GetInt(Params, 'max_results', 50);
 
   AllTrees := FParser.GetAllTrees;
+  AllTrees := FilterTreesByAstGrep(AllTrees, Pattern);
   Matches := SearchSymbols(AllTrees, Pattern, Kind, MaxResults);
 
   Arr := TJSONArray.Create;
@@ -1516,6 +1664,126 @@ begin
   end;
 
   Result := Arr;
+end;
+
+function IsSimpleIdentifier(const S: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if S = '' then Exit;
+  if not (CharInSet(S[1], ['A'..'Z','a'..'z','_','&']) ) then Exit;
+  for I := 2 to Length(S) do
+    if not (CharInSet(S[I], ['A'..'Z','a'..'z','0'..'9','_','.']) ) then Exit;
+  Result := True;
+end;
+
+function TMCPTools.DoSearchPattern(Params: TJSONObject): TJSONValue;
+var
+  Pattern, SearchPath: string;
+  MaxResults: Integer;
+  AstResult: TAstGrepResult;
+  Arr: TJSONArray;
+  Match: TAstGrepMatch;
+  Obj, MetaObj, ResultObj: TJSONObject;
+  MV: TAstGrepMetaVar;
+  ErrorFile: string;
+  Tree: TSyntaxNode;
+  FallbackResults: TJSONArray;
+  FallbackCount, I: Integer;
+  MetaArr: TJSONArray;
+begin
+  if not FAstGrep.IsAvailable then
+  begin
+    Result := TJSONObject.Create;
+    TJSONObject(Result).AddPair('error',
+      'ast-grep is not installed or not configured. ' +
+      'Ensure pascal.dll is next to the server exe, or ' +
+      'set astGrep in .delphi-ast.json.');
+    Exit;
+  end;
+
+  Pattern := GetStr(Params, 'pattern');
+  SearchPath := GetPath(Params, 'path');
+  MaxResults := GetInt(Params, 'max_results', 100);
+
+  if SearchPath = '' then
+    SearchPath := FParser.ProjectRoot;
+
+  AstResult := FAstGrep.RunPattern(Pattern, SearchPath, MaxResults);
+
+  if not AstResult.Success then
+  begin
+    Result := TJSONObject.Create;
+    TJSONObject(Result).AddPair('error', 'ast-grep failed: ' + AstResult.ErrorMessage);
+    Exit;
+  end;
+
+  // Collect clean matches from ast-grep
+  Arr := TJSONArray.Create;
+  for Match in AstResult.Matches do
+  begin
+    if Match.HasError then
+      Continue; // Skip error matches — will be handled by DelphiAST fallback
+
+    Obj := TJSONObject.Create;
+    Obj.AddPair('file', Match.FilePath);
+    Obj.AddPair('line', TJSONNumber.Create(Match.Line));
+    Obj.AddPair('column', TJSONNumber.Create(Match.Column));
+    Obj.AddPair('end_line', TJSONNumber.Create(Match.EndLine));
+    Obj.AddPair('end_column', TJSONNumber.Create(Match.EndColumn));
+    Obj.AddPair('text', Match.Text);
+    if Length(Match.MetaVars) > 0 then
+    begin
+      MetaObj := TJSONObject.Create;
+      for MV in Match.MetaVars do
+        MetaObj.AddPair(MV.Name, MV.Text);
+      Obj.AddPair('metaVariables', MetaObj);
+    end;
+    Arr.Add(Obj);
+  end;
+
+  // Fallback: re-analyze error files with DelphiAST (simple identifiers only)
+  FallbackCount := 0;
+  if (Length(AstResult.ErrorFiles) > 0) and IsSimpleIdentifier(Pattern) then
+  begin
+    for ErrorFile in AstResult.ErrorFiles do
+    begin
+      try
+        Tree := FParser.ParseFile(ErrorFile);
+        FallbackResults := FindUsages(Tree, ErrorFile, Pattern);
+        try
+          for I := 0 to FallbackResults.Count - 1 do
+          begin
+            Obj := TJSONObject(TJSONValue(FallbackResults.Items[I]).Clone);
+            Obj.AddPair('engine', 'delphiast');
+            Arr.Add(Obj);
+            Inc(FallbackCount);
+          end;
+        finally
+          FallbackResults.Free;
+        end;
+      except
+        // File not parseable by either engine — skip
+      end;
+    end;
+  end;
+
+  // Wrap in result object with metadata
+  ResultObj := TJSONObject.Create;
+  ResultObj.AddPair('matches', Arr);
+
+  MetaObj := TJSONObject.Create;
+  MetaObj.AddPair('ast_grep_matches', TJSONNumber.Create(Arr.Count - FallbackCount));
+  MetaObj.AddPair('fallback_matches', TJSONNumber.Create(FallbackCount));
+  MetaObj.AddPair('error_files', TJSONNumber.Create(Length(AstResult.ErrorFiles)));
+  MetaObj.AddPair('elapsed_ms', TJSONNumber.Create(AstResult.ElapsedMs));
+  if (Length(AstResult.ErrorFiles) > 0) and not IsSimpleIdentifier(Pattern) then
+    MetaObj.AddPair('note', 'Error files found but pattern is structural — ' +
+      'DelphiAST fallback only works for simple identifiers');
+  ResultObj.AddPair('_meta', MetaObj);
+
+  Result := ResultObj;
 end;
 
 end.
